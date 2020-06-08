@@ -6,31 +6,28 @@ import string
 import os
 import numpy
 import struct
+import statistics
 
+from string import Template
 
-class InstGenerator:
+class InstGenerator(object):
     _templateHeader = """
-        .text
-        .align  2
+        .section ".text"
         .globl _start
 _start:
-        .globl  main
-        .type   main, @function
-main:
-        li    t0, $iterations
-
+        li x1, $iterations
 """
 
     _templateFooter = """
-
-        addi    t0, t0, -1
-        bne     t0, x0, loop
-        j       0x1FF0
-end:    beq     x0, x0, end
+        addi x1, x1, -1
+        bne x1, x0, .loop
+        j 0x1FF0
+end:    beq x0, x0, end
 
         .section .rodata
         .align  2
 """
+
 
     # Based on Dynamically Exploiting Narrow Width Operands to Improve Processor Power and Performance,
     # David Brooks and Margaret Martonosi, HPCA 99
@@ -82,6 +79,7 @@ end:    beq     x0, x0, end
         self.dir = 'test-programs'
         self.prefix = ''
         self.use_floating_values = use_floating_values
+        self.dstReg = []
 
         if self.use_floating_values:
             self.srcReg = [
@@ -92,24 +90,22 @@ end:    beq     x0, x0, end
             ]
         else:
             self.srcReg = [
-                 'x0',  'x1',  'x2',  'x3',  'x4',  'x5',  'x6',  'x7',  'x8',
+                 'x0',         'x2',  'x3',  'x4',  'x5',  'x6',  'x7',  'x8',
                  'x9', 'x10', 'x11', 'x12', 'x13', 'x14', 'x15', 'x16', 'x17',
                 'x18', 'x19', 'x20', 'x21', 'x22', 'x23', 'x24', 'x25', 'x26',
                 'x27', 'x28', 'x29', 'x30', 'x31'
             ]
 
-        self.dstReg = []
-
     def init_registers(self, registers):
         if self.use_floating_values:
             for r in registers:
                 label = "." + r +"_DATA"
-                self.program += "        lui a5,%hi(" + label + ")\n"
-                self.program += "        flw " + r + ",%lo(" + label + ")(a5)\n"
+                self.program += "        lui a5, %hi(" + label + ")\n"
+                self.program += "        flw " + r + ", %lo(" + label + ")(a5)\n"
                 self.alloc_single_value(random.choice(self._FLOAT_VALUES), label)
         else:
             for r in registers:
-                value = 2 ** numpy.random.choice(self._WRANGE, p=self._RAND_WEIGHT) - 1
+                value = min(2 ** numpy.random.choice(self._WRANGE, p=self._RAND_WEIGHT) - 1, 2 ** 20 - 1)
                 self.program += "        li %s, %d\n" % (r, value)
 
     def alloc_single_value(self, value, label):
@@ -132,9 +128,9 @@ end:    beq     x0, x0, end
         .word  %d\n\
         .align  3" % (label, int(bstr[32:64],2), int(bstr[0:32],2))
 
-    def ReserveDestinationRegisters(self, number):
+    def reserve_destination_registers(self, number):
         for i in range(0, number):
-            register = random.choice(self.srcReg)
+            register = random.choice(self.srcReg[1:])
             self.srcReg.remove(register)
             self.dstReg.append(register)
 
@@ -145,7 +141,7 @@ end:    beq     x0, x0, end
         self.program += string.replace(self._templateHeader, '$iterations', str(iterations))
 
     def __add_loop_label(self):
-        self.program += "\nloop:\n"
+        self.program += "\n.loop:\n"
 
     def __add_footer(self):
         self.program += self._templateFooter
@@ -187,41 +183,74 @@ end:    beq     x0, x0, end
 
 class TypeU(InstGenerator):
     def _add_random_instruction(self):
-        return "        %s    %s, %d\n" % (self.instruction,
-                                           random.choice(self.srcReg),
-                                           random.randint(0, 2 ** 20 - 1))
+        return "        %s %s, %d\n" % (self.instruction,
+                                random.choice((self.srcReg + self.dstReg)[1:]),
+                                random.randint(0, 2 ** 20 - 1))
 
 # opcode rs2 rs1 opcode rd opcode
 class TypeR(InstGenerator):
     def _add_random_instruction(self):
-        return "        %s    %s, %s, %s\n" % (self.instruction,
-                                               random.choice(self.dstReg),
-                                               random.choice(self.srcReg),
-                                               random.choice(self.srcReg))
+        return "        %s %s, %s, %s\n" % (self.instruction,
+                                            random.choice(self.dstReg),
+                                            random.choice(self.srcReg),
+                                            random.choice(self.srcReg))
+
+class TypeRF(TypeR):
+    _ALL_VALID_INT_TGTS = [
+                               'x2',  'x3',  'x4',  'x5',  'x6',  'x7',  'x8',
+                 'x9', 'x10', 'x11', 'x12', 'x13', 'x14', 'x15', 'x16', 'x17',
+                'x18', 'x19', 'x20', 'x21', 'x22', 'x23', 'x24', 'x25', 'x26',
+                'x27', 'x28', 'x29', 'x30', 'x31'
+    ]
+
+    def _add_random_instruction(self):
+        return "        %s %s, %s, %s\n" % (self.instruction,
+                                   random.choice(self._ALL_VALID_INT_TGTS),
+                                   random.choice(self.srcReg + self.dstReg),
+                                   random.choice(self.srcReg + self.dstReg))
+
+class TypeR2DI(TypeRF):
+    def _add_random_instruction(self):
+        return "        %s %s, %s\n" % (self.instruction,
+                                   random.choice(self._ALL_VALID_INT_TGTS),
+                                   random.choice(self.srcReg + self.dstReg))
+
+class TypeR2DF(TypeR):
+    _ALL_VALID_FLOAT_TGTS = [
+                'f0',  'f1',  'f2',  'f3',  'f4',  'f5',  'f6',  'f7',  'f8',
+                'f9', 'f10', 'f11', 'f12', 'f13', 'f14', 'f15', 'f16', 'f17',
+               'f18', 'f19', 'f20', 'f21', 'f22', 'f23', 'f24', 'f25', 'f26',
+               'f27', 'f28', 'f29', 'f30', 'f31'
+    ]
+
+    def _add_random_instruction(self):
+        return "        %s %s, %s\n" % (self.instruction,
+                                   random.choice(self._ALL_VALID_FLOAT_TGTS),
+                                   random.choice(self.srcReg + self.dstReg))
 
 # opcode rs2 rs1 opcode rd opcode
 class TypeRD(TypeR):
     def init_registers(self, registers):
         for r in registers:
-            value = 2 ** numpy.random.choice(self._WRANGE, p=self._RAND_WEIGHT)
+            value = min(2 ** numpy.random.choice(self._WRANGE, p=self._RAND_WEIGHT), 2 ** 20 - 1)
             self.program += "        li %s, %d\n" % (r, value)
 
 # opcode shamt rs1 opcode rd opcode
 class TypeRS(InstGenerator):
     def _add_random_instruction(self):
-        return "        %s    %s, %s, %d\n" % (self.instruction,
-                                               random.choice(self.dstReg),
-                                               random.choice(self.srcReg),
-                                               random.randint(0, 31))
+        return "        %s %s, %s, %d\n" % (self.instruction,
+                                            random.choice(self.dstReg),
+                                            random.choice(self.srcReg),
+                                            random.randint(0, 31))
 
 
 # imm[11:0] rs1 opcode rd opcode
 class TypeI(InstGenerator):
     def _add_random_instruction(self):
-        return "        %s    %s, %s, %d\n" % (self.instruction,
-                                               random.choice(self.dstReg),
-                                               random.choice(self.srcReg),
-                                               random.randint(0, 2047))
+        return "        %s %s, %s, %d\n" % (self.instruction,
+                                            random.choice(self.dstReg),
+                                            random.choice(self.srcReg),
+                                            random.randint(0, 2047))
 
 # imm[11:0] rs1 opcode rd opcode
 class TypeILS(InstGenerator):
@@ -232,24 +261,130 @@ class TypeILS(InstGenerator):
         self.range = int((endAddress - baseAddress) / 4)
 
     def _add_random_instruction(self):
-        return "        %s    %s, %d(%s)\n" % (self.instruction,
-                                               random.choice(self.dstReg),
-                                               self.baseAddress + 4 * random.randint(0, self.range),
-                                               random.choice(self.srcReg))
+        return "        %s %s, %d(%s)\n" % (self.instruction,
+                                            random.choice(self.dstReg),
+                                            self.baseAddress + 4 * random.randint(0, self.range),
+                                            random.choice(self.srcReg))
 
 class TypeR4(InstGenerator):
     def _add_random_instruction(self):
-        return "        %s    %s, %s, %s, %s\n" % (self.instruction,
-                                           random.choice(self.dstReg),
-                                           random.choice(self.srcReg),
-                                           random.choice(self.srcReg),
-                                           random.choice(self.srcReg))
+        return "        %s %s, %s, %s, %s\n" % (self.instruction,
+                                                random.choice(self.dstReg),
+                                                random.choice(self.srcReg),
+                                                random.choice(self.srcReg),
+                                                random.choice(self.srcReg))
+
 
 class TypeR2(InstGenerator):
     def _add_random_instruction(self):
-        return "        %s    %s, %s\n" % (self.instruction,
-                                           random.choice(self.dstReg),
-                                           random.choice(self.srcReg))
+        return "        %s %s, %s\n" % (self.instruction,
+                                        random.choice(self.dstReg),
+                                        random.choice(self.srcReg))
+
+class TypeJ(InstGenerator):
+    def __init__(self, instruction):
+        InstGenerator.__init__(self, instruction)
+        self.jump_table = []
+
+    def __gen_jump_table(self, nInstructions):
+        addr_table = random.sample(range(1, nInstructions - 1), nInstructions - 2)
+        addr_table.append(nInstructions - 1)
+
+        jump_table = numpy.empty(nInstructions,  dtype=object)
+
+        curr = 0
+        for jmp in addr_table:
+            jump_table[curr] = self._build_instruction(str(curr), str(jmp))
+            curr = jmp
+
+        jump_table[nInstructions-1] = ".label" + str(curr) + ":\n"
+        return jump_table.tolist()
+
+    def generate_program(self, iterations, nInstructions):
+        self.jump_table = self.__gen_jump_table(nInstructions)
+        super(TypeJ, self).generate_program(iterations, nInstructions)
+
+    def _build_instruction(self, id, addr):
+        return ".label%s:\n        %s %s, .label%s\n" % (id,
+                                                 self.instruction,
+                                                 random.choice(self.srcReg),
+                                                 addr)
+
+    def init_registers(self, registers):
+        for r in registers:
+            self.program += "        li %s, %d\n" % (r, 0)
+
+    def _add_random_instruction(self):
+        return self.jump_table.pop(0)
+
+class TypeJR(TypeJ):
+    def init_registers(self, registers):
+        for r in registers:
+            self.program += "        la %s, .loop\n" % (r)
+
+    def _build_instruction(self, id, addr):
+        addr = str(int(addr) * 4);
+        return ".label%s:\n         %s  %s, %s, %s\n" % (id,
+                                                 self.instruction,
+                                                 random.choice(self.dstReg),
+                                                 random.choice(self.srcReg[1:]),
+                                                 addr)
+
+class TypeB(TypeJ):
+    EQUAL_TST  = 0
+    GRATER_TST = 1
+    LOWER_TST  = 2
+
+    def __init__(self, instruction, cmp_method):
+        InstGenerator.__init__(self, instruction)
+        self.init_list = ""
+        self.cmp_method = cmp_method
+        self.seed = random.randint(0, 2 ** 20 - 1)
+        self.samples = [random.randint(1, 2 ** 20 - 1) for i in range(0, len(self.srcReg))]
+        random.shuffle(self.samples)
+        self.median = statistics.median(self.samples)
+        self.lower_list = ["x0"]
+        self.grater_list = []
+
+        if self.cmp_method == TypeB.EQUAL_TST:
+            for r in self.srcReg[1:]:
+                self.init_list += "        li %s, %d\n" % (r, self.seed)
+        else:
+            for r in self.srcReg[1:]:
+                value = self.samples.pop()
+
+                if value > self.median:
+                    self.grater_list.append(r)
+                else:
+                    self.lower_list.append(r)
+
+                self.init_list += "        li %s, %d\n" % (r, value)
+
+    def init_registers(self, registers):
+        self.program += self.init_list
+        self.init_list = ""
+
+    def _build_instruction(self, id, addr):
+        if self.cmp_method == TypeB.EQUAL_TST:
+            return ".label%s:\n        %s %s, %s, .label%s\n" % (id,
+                                            self.instruction,
+                                            random.choice(self.srcReg),
+                                            random.choice(self.srcReg),
+                                            addr)
+
+        elif self.cmp_method == TypeB.LOWER_TST:
+            return ".label%s:\n        %s %s, %s, .label%s\n" % (id,
+                                            self.instruction,
+                                            random.choice(self.lower_list),
+                                            random.choice(self.grater_list),
+                                            addr)
+
+        return ".label%s:\n        %s %s, %s, .label%s\n" % (id,
+                                            self.instruction,
+                                            random.choice(self.grater_list),
+                                            random.choice(self.lower_list),
+                                            addr)
+
 
 
 if __name__ == '__main__':
@@ -264,15 +399,20 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--prefix', required=False, help='Add this prefix to all filenames')
     args = parser.parse_args()
 
-    branchInstructions = ['beq', 'bne', 'blt', 'bge', 'bltu', 'bgeu']
-    jumpInstructions = ['jal', 'jalr']
-
-
     templates = [
+        InstGenerator("baseline"),
+
         # RV32I
         TypeU("lui"),
         TypeU("auipc"),
-
+        TypeJ("jal"),
+        TypeJR("jalr"),
+        TypeB("beq" , TypeB.EQUAL_TST),
+        TypeB("bne" , TypeB.LOWER_TST),
+        TypeB("blt" , TypeB.LOWER_TST),
+        TypeB("bge" , TypeB.GRATER_TST),
+        TypeB("bltu", TypeB.LOWER_TST),
+        TypeB("bgeu", TypeB.GRATER_TST),
         TypeILS("lb", 0, 512),
         TypeILS("lh", 0, 512),
         TypeILS("lw", 0, 512),
@@ -281,14 +421,12 @@ if __name__ == '__main__':
         TypeILS("sb", 0, 512),
         TypeILS("sh", 0, 512),
         TypeILS("sw", 0, 512),
-
         TypeI("addi"),
         TypeI("slti"),
         TypeI("sltiu"),
         TypeI("xori"),
         TypeI("ori"),
         TypeI("andi"),
-
         TypeRS("slli"),
         TypeRS("srli"),
         TypeRS("srai"),
@@ -311,7 +449,6 @@ if __name__ == '__main__':
         TypeRS("slliw"),
         TypeRS("srliw"),
         TypeRS("sraiw"),
-
         TypeR("addw"),
         TypeR("subw"),
         TypeR("sllw"),
@@ -350,6 +487,16 @@ if __name__ == '__main__':
         TypeR("fsgnjx.s", True),
         TypeR("fmin.s", True),
         TypeR("fmax.s", True),
+        TypeR2DI("fcvt.w.s", True),
+        TypeR2DI("fcvt.wu.s", True),
+        TypeR2DI("fmv.x.w", True),
+        TypeRF("feq.s", True),
+        TypeRF("flt.s", True),
+        TypeRF("fle.s", True),
+        TypeR2DI("fclass.s", True),
+        TypeR2DF("fcvt.s.w", False),
+        TypeR2DF("fcvt.s.wu", False),
+        TypeR2DF("fmv.w.x", False), # TODO: inicializar x com um numero real
 
         # RV32D
         TypeR4("fmadd.d", True),
@@ -365,12 +512,35 @@ if __name__ == '__main__':
         TypeR("fsgnjn.d", True),
         TypeR("fsgnjx.d", True),
         TypeR("fmin.d", True),
-        TypeR("fmax.d", True)
+        TypeR("fmax.d", True),
+        TypeR2("fcvt.s.d", True),
+        TypeR2("fcvt.d.s", True),
+        TypeRF("feq.d", True),
+        TypeRF("flt.d", True),
+        TypeRF("fle.d", True),
+        TypeR2DI("fclass.d", True),
+        TypeR2DI("fcvt.w.d", True),
+        TypeR2DI("fcvt.wu.d", True),
+        TypeR2DF("fcvt.d.w", False),
+        TypeR2DF("fcvt.d.wu", False),
+
+        # RV64F
+        TypeR2DI("fcvt.l.s", True),
+        TypeR2DI("fcvt.lu.s", True),
+        TypeR2DF("fcvt.s.l", False),
+        TypeR2DF("fcvt.s.lu", False),
+
+        # RV64D
+        TypeR2DI("fcvt.l.d", True),
+        TypeR2DI("fcvt.lu.d", True),
+        TypeR2DI("fmv.x.d", True),
+        TypeR2DF("fcvt.d.l", False),
+        TypeR2DF("fcvt.d.lu", False),
+        TypeR2DF("fmv.d.x", False) # TODO: iniciar x com um valor real
     ]
 
-
     for template in templates:
-        template.ReserveDestinationRegisters(6)
+        template.reserve_destination_registers(6)
 
         if (args.verbose):
             print ('Instruction:' + template.instruction)
