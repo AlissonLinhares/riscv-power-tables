@@ -18,13 +18,19 @@ EXPECTED_RESULT="User fetch segfault @ 0x0000000000001ff0"
 
 .PRECIOUS: $(OBJ_DIR)/%.riscv
 
-all: $(OBJS)
+all: $(OBJ_DIR) $(LOG_DIR) $(OBJS)
 
 $(OBJ_DIR)/%.riscv.hex: $(OBJ_DIR)/%.riscv
 	$(HEX) 16 512 $^ > ${@}
 
 $(OBJ_DIR)/%.riscv : $(SRC_DIR)/%.s
 	$(CC) $(CFLAGS) -I $(COMMON)/ -o $@ $^ $(LDFLAGS) -T $(COMMON)/boot.ld
+
+$(LOG_DIR):
+	mkdir $(LOG_DIR)
+
+$(OBJ_DIR):
+	mkdir $(OBJ_DIR)
 
 test: $(OBJS)
 	@{  echo "************************* Tests ******************************"; \
