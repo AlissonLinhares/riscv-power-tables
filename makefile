@@ -9,7 +9,7 @@ OBJ_DIR=bin
 LOG_DIR=log
 COMMON=ext
 
-GEN:=$(shell python gen-templates.py -i 100 -n 100)
+GEN:=$(shell python gen-test-programs.py -i 100 -n 100)
 SRCS=$(wildcard $(SRC_DIR)/*.s)
 OBJS=$(patsubst $(SRC_DIR)/%.s,$(OBJ_DIR)/%.riscv.hex,$(SRCS))
 TESTS=$(patsubst $(SRC_DIR)/%.s,$(OBJ_DIR)/%.riscv,$(SRCS))
