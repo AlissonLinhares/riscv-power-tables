@@ -50,7 +50,7 @@ class TypeJ(InstGenerator):
 
     def init_registers(self):
         for r in self.srcReg[1:]:
-            self.program += "        li %s, %d\n" % (r, 0)
+            self.program += "        xor %s, %s, %s\n" % (r, r, r)
 
     def _add_random_instruction(self):
         return self.jump_table.pop(0)
@@ -58,7 +58,8 @@ class TypeJ(InstGenerator):
 class TypeJR(TypeJ):
     def init_registers(self):
         for r in self.srcReg[1:]:
-            self.program += "        la %s, .loop\n" % (r)
+            self.program += "        auipc " + r + ", %hi(.loop)\n"
+            self.program += "        addi " + r + ", " + r + ", %lo(.loop)\n"
 
     def _build_instruction(self, id, addr):
         addr = str(int(addr) * 4);
@@ -73,10 +74,11 @@ class TypeB(TypeJ):
     GRATER_TST = 1
     LOWER_TST  = 2
 
-    def __init__(self, instruction, format, cmp_method, prefix = ""):
+    def __init__(self, instruction, format, cmp_method, base_name = ""):
         InstGenerator.__init__(self, instruction, format)
         self.init_list = ""
-        self.prefix = prefix
+        self.prefix = base_name
+        self.base_name = base_name
         self.cmp_method = cmp_method
         self.seed = random.randint(0, 2 ** 20 - 1)
         self.samples = [random.randint(1, 2 ** 20 - 1) for i in range(0, len(self.srcReg))]
@@ -87,7 +89,8 @@ class TypeB(TypeJ):
 
         if self.cmp_method == TypeB.EQUAL_TST:
             for r in self.srcReg[1:]:
-                self.init_list += "        li %s, %d\n" % (r, self.seed)
+                self.init_list += "        lui " + r + ", %hi(" + str(self.seed) + ")\n"
+                self.init_list += "        addi " + r + ", " + r + ", %lo(" + str(self.seed) + ")\n"
         else:
             for r in self.srcReg[1:]:
                 value = self.samples.pop()
@@ -97,7 +100,11 @@ class TypeB(TypeJ):
                 else:
                     self.lower_list.append(r)
 
-                self.init_list += "        li %s, %d\n" % (r, value)
+                self.init_list += "        lui " + r + ", %hi(" + str(value) + ")\n"
+                self.init_list += "        addi " + r + ", " + r + ", %lo(" + str(value) + ")\n"
+
+    def set_prefix(self, prefix):
+        self.prefix = prefix + self.base_name
 
     def init_registers(self):
         self.program += self.init_list

@@ -1,1 +1,4 @@
-*/*.pyc */*.hex */*.riscv */*.s
+src/*.pyc
+*/*.hex
+*/*.riscv
+*/*.s

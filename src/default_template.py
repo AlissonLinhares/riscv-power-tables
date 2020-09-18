@@ -32,31 +32,18 @@ class InstGenerator(object):
         .section ".text"
         .globl _start
 _start:
-        li x1, $iterations
+        lui x1, %hi($iterations)
+        addi x1, x1, %lo($iterations)
 """
 
     _templateFooter = """
         addi x1, x1, -1
         bne x1, x0, .loop
         j 0x1FF0
-end:    beq x0, x0, end
+end:    j end
 
         .section .rodata
-        .align  2
 """
-
-    # Based on Dynamically Exploiting Narrow Width Operands to Improve Processor Power and Performance,
-    # David Brooks and Margaret Martonosi, HPCA 99
-    _RAND_WEIGHT = [
-        0.2222222,  0.1180556,  0.0347222,  0.0486111,  0.0694444,  0.0486111,
-        0.0486111,  0.0486111,  0.0486111,  0.0555556,  0.0277778,  0.0277778,
-        0.0069444,  0.0138889,  0.0208333,  0.0208333,  0.0208333,  0.0138889,
-        0.0138889,  0.0069444,        0.0,  0.0138889,  0.0138889,  0.0277778,
-              0.0,  0.0069444,        0.0,        0.0,  0.0069444,  0.0069444,
-              0.0,        0.0,    0.006944700000000286
-    ] #0.0069444
-
-    _WRANGE = range(0, len(_RAND_WEIGHT))
 
     _REAL_VALUES = [
         1.0, # one
@@ -66,26 +53,31 @@ end:    beq x0, x0, end
         1.73205080756887729352, # sqr3
         0.70710678118654752440, # sqri
         1.61803398874989484820, # phi
-        2.71828182845904523536, # eule
+        2.71828182845904523536, # Eule
+        2.80777024202851936522, # F
+        2.58498175957925321706, # K
+        2.29558714939263807403, # P2
+        0.56714329040978387299, # Omega
+        4.66920160910299067185, # Feigenbaum
+        1.902160583104, # B2
+        0.57721566490153286060, # Euler-Mascheroni
         0.69314718055994530941, # ln2
-        0.83462684167407318628, # gaus
-        4.81047738096535165547, # john
+        0.83462684167407318628, # Gaus
+        4.81047738096535165547, # John
         262537412640768743.999999999999250073, # hermiteRamanuj
-        1.75793275661800453270, # kasne
-        23.1406926327792690057, # gelfon
-        4.53236014182719380962, # vanderpau
-        2.50290787509589282228, # feigenbau
+        1.75793275661800453270, # Kasne
+        23.1406926327792690057, # Gelfon
+        4.53236014182719380962, # Vanderpau
+        2.50290787509589282228, # Feigenbau
         1.5065918849, # mandelbrotAre
         2.39996322972865332223, # goldenAngl
         4.53236014182719380962, # vanDerPau
-        0.65028784016, # sin1
-        -0.98803162409, # sin3
-        0.85090352453, # sin4
-        -0.3048106211, # sin6
-        -0.38778163541, # sin7
-        0.92175126972, # cos7
-        0.8939966636, # sin9
-        -0.44807361613, # cos9
+        0.65028784016, # sin 15
+       -0.75968791285, # cos 15
+       -0.8559934009,  # tan 15
+       -0.98803162409, # sin 30
+        0.15425144988, # cos 30
+       -6.40533119665, # tan 30
     ]
 
     _ALL_VALID_INT_TGTS = [
@@ -108,6 +100,7 @@ end:    beq x0, x0, end
         self.program = ''
         self.dir = 'test-programs'
         self.prefix = ''
+        self.sufix = ''
         self.format = format
         self.dstReg = []
 
@@ -143,8 +136,9 @@ end:    beq x0, x0, end
                 self.alloc_double_value(random.choice(self._REAL_VALUES), label)
         else:
             for r in registers[1:]:
-                value = 2 ** numpy.random.choice(self._WRANGE, p=self._RAND_WEIGHT) - 1
-                self.program += "        li %s, %d\n" % (r, value)
+                value = random.randint(0, 2 ** 32 - 1)
+                self.program += "        lui " + r + ", %hi(" + str(value) + ")\n"
+                self.program += "        addi " + r + ", " + r + ", %lo(" + str(value) + ")\n"
 
     def alloc_single_value(self, value, label):
         result = 0
@@ -156,8 +150,7 @@ end:    beq x0, x0, end
             result = int(bstr[3::].zfill(32)[0:32],2) or 0x80000000
 
         self._templateFooter += "%s:\n\
-        .word  %d\n\
-        .align  2\n" % (label, result)
+        .word  %d\n" % (label, result)
 
     def alloc_double_value(self, value, label):
         bstr = bin(struct.unpack('Q',struct.pack('d',value))[0])[2::].zfill(64)
@@ -172,8 +165,7 @@ end:    beq x0, x0, end
 
         self._templateFooter += "%s:\n\
         .word  %d\n\
-        .word  %d\n\
-        .align  3\n" % (label, right, left)
+        .word  %d\n" % (label, right, left)
 
     def reserve_destination_registers(self, number):
         for i in range(0, number):
@@ -193,9 +185,6 @@ end:    beq x0, x0, end
     def __add_footer(self):
         self.program += self._templateFooter
 
-    def __force_alignment(self):
-        self.program += '        .align 7'
-
     def __save_program(self, iterations, nInstructions):
         if not os.path.exists(self.dir):
             os.makedirs(self.dir)
@@ -207,21 +196,32 @@ end:    beq x0, x0, end
                                    str(iterations) +
                                    'x' +
                                    str(nInstructions) +
+                                   self.sufix +
                                    '.s')
         open(file_name, 'wt').write(self.program)
 
     def generate_program(self, iterations, nInstructions):
         self.__add_header(iterations)
         self.init_registers()
-        # self.__force_alignment()
         self.__add_loop_label()
+
+        self.sufix = "_init"
+        self.program += "        # Empty template\n"
+        code = ""
+
         for i in range(0, nInstructions):
-            self.program += self._add_random_instruction()
+            code += self._add_random_instruction()
+
         self.__add_footer()
         self.__save_program(iterations, nInstructions)
 
-    def set_dir(self, newDir):
-        self.dir = newDir
+        self.sufix = ""
+        self.program = self.program.replace("        # Empty template\n", code)
+        self.__save_program(iterations, nInstructions)
 
-    def set_prefix(self, newPrefix):
-        self.prefix = newPrefix
+
+    def set_dir(self, dir):
+        self.dir = dir
+
+    def set_prefix(self, prefix):
+        self.prefix = prefix

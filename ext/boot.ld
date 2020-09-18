@@ -19,42 +19,25 @@ OUTPUT_ARCH( "riscv" )
 
 SECTIONS
 {
+  /* River's jump address */
+  . = 0x0000;
 
-  /* text: test code section */
-  . = 0x200;
-  .text :
-  {
+  /* Test code section */
+  .text : ALIGN(512) {
     *(.text)
   }
 
-  /* data segment */
-  .data : { *(.data) }
-
-  .sdata : {
-    _gp = . + 0x800;
-    *(.srodata.cst16) *(.srodata.cst8) *(.srodata.cst4) *(.srodata.cst2) *(.srodata*)
-    *(.sdata .sdata.* .gnu.linkonce.s.*)
+  /* Read-only data, aligned after text section. */
+  .rodata : ALIGN(512) {
+    *(.rodata)
   }
 
-  /* bss segment */
-  .sbss : {
-    *(.sbss .sbss.* .gnu.linkonce.sb.*)
-    *(.scommon)
-  }
-  .bss : { *(.bss) }
+  /* River's ram address */
+  . = 0x10000000;
 
-  /* thread-local data segment */
-  .tdata :
-  {
-    _tls_data = .;
-    *(.tdata)
+  /* data region for elf testing */
+  .data : {
+    *(.data)
+    . += 0x80000;
   }
-  .tbss :
-  {
-    *(.tbss)
-  }
-
-  /* End of uninitalized data segement */
-  _end = .;
 }
-

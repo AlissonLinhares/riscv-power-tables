@@ -23,14 +23,23 @@ class TypeILS(InstGenerator):
         self.baseAddress = baseAddress
         self.endAddress = endAddress
 
+    def _get_base_addr(self):
+        addr = random.randint(self.baseAddress + 2048, self.endAddress - 2048)
+        return (addr >> 3) << 3
+
+    def _get_offset(self):
+        return random.randint(1, 256) * 8 - 8
+
     def init_registers(self):
         for r in self.srcReg[1:]:
-            self.program += "        li %s, %d\n" % (r, random.randint(self.baseAddress + 2048, self.endAddress - 2048))
+            value = self._get_base_addr()
+            self.program += "        lui " + r + ", %hi(" + str(value) + ")\n"
+            self.program += "        addi " + r + ", " + r + ", %lo(" + str(value) + ")\n"
 
     def _add_random_instruction(self):
         return "        %s %s, %d(%s)\n" % (self.instruction,
                                             random.choice(self.dstReg),
-                                            random.randint(0, 2047),
+                                            self._get_offset(),
                                             random.choice(self.srcReg[1:]))
 
 class TypeILSF(TypeILS):
@@ -38,11 +47,12 @@ class TypeILSF(TypeILS):
         super(TypeILS, self).init_registers()
 
         for r in self._ALL_VALID_INT_TGTS:
-            self.program += "        li %s, %d\n" % (r, random.randint(self.baseAddress + 2048, self.endAddress - 2048))
+            value = self._get_base_addr()
+            self.program += "        lui " + r + ", %hi(" + str(value) + ")\n"
+            self.program += "        addi " + r + ", " + r + ", %lo(" + str(value) + ")\n"
 
     def _add_random_instruction(self):
         return "        %s %s, %d(%s)\n" % (self.instruction,
                                             random.choice(self._ALL_VALID_FLOAT_TGTS),
-                                            random.randint(0, 2047),
+                                            self._get_offset(),
                                             random.choice(self._ALL_VALID_INT_TGTS))
-

@@ -22,6 +22,7 @@ if __name__ == '__main__':
 
     templates = [
         # RV32I
+        TypeNOP("nop", Extension.I),
         TypeU("lui", Extension.I),
         TypeU("auipc", Extension.I),
         TypeJ("jal", Extension.I),

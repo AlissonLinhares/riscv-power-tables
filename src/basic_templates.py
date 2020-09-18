@@ -39,8 +39,9 @@ class TypeRD(TypeR):
         self.srcReg.pop(0)
 
         for r in self.srcReg:
-            value = 2 ** numpy.random.choice(self._WRANGE, p=self._RAND_WEIGHT)
-            self.program += "        li %s, %d\n" % (r, value)
+            value = random.randint(0, 2 ** 32 - 1)
+            self.program += "        lui " + r + ", %hi(" + str(value) + ")\n"
+            self.program += "        addi " + r + ", " + r + ", %lo(" + str(value) + ")\n"
 
 # opcode shamt rs1 opcode rd opcode
 class TypeRS(InstGenerator):
@@ -90,3 +91,7 @@ class TypeR2DF(TypeR):
         return "        %s %s, %s\n" % (self.instruction,
                                    random.choice(self._ALL_VALID_FLOAT_TGTS),
                                    random.choice(self.srcReg + self.dstReg))
+
+class TypeNOP(TypeRF):
+    def _add_random_instruction(self):
+        return "        %s\n" % (self.instruction)
