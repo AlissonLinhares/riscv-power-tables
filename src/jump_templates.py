@@ -58,7 +58,7 @@ class TypeJ(InstGenerator):
 class TypeJR(TypeJ):
     def init_registers(self):
         for r in self.srcReg[1:]:
-            self.program += "        auipc " + r + ", %hi(.loop)\n"
+            self.program += "        lui " + r + ", %hi(.loop)\n"
             self.program += "        addi " + r + ", " + r + ", %lo(.loop)\n"
 
     def _build_instruction(self, id, addr):

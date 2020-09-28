@@ -1,24 +1,24 @@
-CC=$(RISCV)/riscv64-unknown-elf-gcc
-HEX=$(RISCV)/elf2hex
+CC=$(RISCV)/bin/riscv64-unknown-elf-gcc
+HEX=$(RISCV)/bin/elf2hex
 CFLAGS=-DPREALLOCATE=1 -march=rv64imfd -mcmodel=medany -static -std=gnu99 -O0
 LDFLAGS=-static -nostdlib -nostartfiles -lm -lgcc
-SPIKE=$(RISCV)/spike
+SPIKE=$(RISCV)/bin/spike
 
 SRC_DIR=test-programs
 OBJ_DIR=bin
 LOG_DIR=log
 COMMON=ext
 
-GEN:=$(shell python gen-test-programs.py -i 10 -n 20 -p "0_")
-GEN:=$(shell python gen-test-programs.py -i 10 -n 20 -p "1_")
-GEN:=$(shell python gen-test-programs.py -i 10 -n 20 -p "2_")
-GEN:=$(shell python gen-test-programs.py -i 10 -n 20 -p "3_")
-GEN:=$(shell python gen-test-programs.py -i 10 -n 20 -p "4_")
-GEN:=$(shell python gen-test-programs.py -i 10 -n 20 -p "5_")
-GEN:=$(shell python gen-test-programs.py -i 10 -n 20 -p "6_")
-GEN:=$(shell python gen-test-programs.py -i 10 -n 20 -p "7_")
-GEN:=$(shell python gen-test-programs.py -i 10 -n 20 -p "8_")
-GEN:=$(shell python gen-test-programs.py -i 10 -n 20 -p "9_")
+GEN:=$(shell python gen-test-programs.py -i 32 -n 64 -p "0_")
+GEN:=$(shell python gen-test-programs.py -i 32 -n 64 -p "1_")
+GEN:=$(shell python gen-test-programs.py -i 32 -n 64 -p "2_")
+GEN:=$(shell python gen-test-programs.py -i 32 -n 64 -p "3_")
+GEN:=$(shell python gen-test-programs.py -i 32 -n 64 -p "4_")
+GEN:=$(shell python gen-test-programs.py -i 32 -n 64 -p "5_")
+GEN:=$(shell python gen-test-programs.py -i 32 -n 64 -p "6_")
+GEN:=$(shell python gen-test-programs.py -i 32 -n 64 -p "7_")
+GEN:=$(shell python gen-test-programs.py -i 32 -n 64 -p "8_")
+GEN:=$(shell python gen-test-programs.py -i 32 -n 64 -p "9_")
 
 SRCS=$(wildcard $(SRC_DIR)/*.s)
 OBJS=$(patsubst $(SRC_DIR)/%.s,$(OBJ_DIR)/%.riscv.hex,$(SRCS))
